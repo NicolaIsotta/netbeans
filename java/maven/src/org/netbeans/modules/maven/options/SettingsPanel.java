@@ -958,7 +958,10 @@ public class SettingsPanel extends javax.swing.JPanel {
     }//GEN-LAST:event_lstCategoryValueChanged
     
     private void comManageJdksActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_comManageJdksActionPerformed
+        String currentSelectedJdk = (String) comJdkHome.getSelectedItem();
         PlatformsCustomizer.showCustomizer(findSelectedJdk(new String[1]));
+        updateJdkDataModel(currentSelectedJdk);
+        fireChanged();
     }//GEN-LAST:event_comManageJdksActionPerformed
 
     private void cbEnableIndexingActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_cbEnableIndexingActionPerformed
@@ -1170,19 +1173,7 @@ public class SettingsPanel extends javax.swing.JPanel {
                             mavenHomeDataModel.addElement(desc);
                         }
 
-                        jdkHomeDataModel.removeAllElements();
-                        JavaPlatform def = JavaPlatformManager.getDefault().getDefaultPlatform();
-                        String defJdkName = MavenSettings.getDefault().getDefaultJdk();
-                        if (defJdkName.isEmpty()) {
-                            defJdkName = def.getDisplayName();
-                        }
-                        for (JavaPlatform p : JavaPlatformManager.getDefault().getInstalledPlatforms()) {
-                            jdkHomeDataModel.addElement(p.getDisplayName());
-                            String antName = p.getProperties().get("platform.ant.name"); // NOI18N
-                            if (defJdkName.equals(p.getDisplayName()) || defJdkName.equals(antName)) {
-                                jdkHomeDataModel.setSelectedItem(p.getDisplayName());
-                            }
-                        }
+                        updateJdkDataModel(null);
 
                         if (!userDefinedMavenRuntimes.isEmpty()) {
                             mavenHomeDataModel.addElement(SEPARATOR);
@@ -1476,6 +1467,32 @@ public class SettingsPanel extends javax.swing.JPanel {
                     TXT_PermissionTable_Permission_deny(),
                     TXT_PermissionTable_Permission_remove()
                 })));
+    }
+
+    private void updateJdkDataModel(String selectedJdkName) {
+        jdkHomeDataModel.removeAllElements();
+        JavaPlatform def = JavaPlatformManager.getDefault().getDefaultPlatform();
+        String targetJdk = selectedJdkName;
+        if (targetJdk == null || targetJdk.isEmpty()) {
+            targetJdk = MavenSettings.getDefault().getDefaultJdk();
+            if (targetJdk.isEmpty() && def != null) {
+                targetJdk = def.getDisplayName();
+            }
+        }
+
+        boolean found = false;
+        for (JavaPlatform p : JavaPlatformManager.getDefault().getInstalledPlatforms()) {
+            jdkHomeDataModel.addElement(p.getDisplayName());
+            String antName = p.getProperties().get("platform.ant.name"); // NOI18N
+            if (targetJdk != null && (targetJdk.equals(p.getDisplayName()) || targetJdk.equals(antName))) {
+                jdkHomeDataModel.setSelectedItem(p.getDisplayName());
+                found = true;
+            }
+        }
+
+        if (!found && def != null) {
+            jdkHomeDataModel.setSelectedItem(def.getDisplayName());
+        }
     }
 
     @Messages({
