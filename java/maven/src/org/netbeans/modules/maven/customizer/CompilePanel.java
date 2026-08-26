@@ -494,7 +494,7 @@ public class CompilePanel extends javax.swing.JPanel implements HelpCtx.Provider
         lblJavaPlatform.setLabelFor(comJavaPlatform);
         org.openide.awt.Mnemonics.setLocalizedText(lblJavaPlatform, org.openide.util.NbBundle.getMessage(CompilePanel.class, "CompilePanel.lblJavaPlatform.text")); // NOI18N
 
-        lblJavaPlatform1.setLabelFor(comJavaPlatform);
+        lblJavaPlatform1.setLabelFor(comSourceLevel);
         org.openide.awt.Mnemonics.setLocalizedText(lblJavaPlatform1, org.openide.util.NbBundle.getMessage(CompilePanel.class, "CompilePanel.lblJavaPlatform1.text")); // NOI18N
 
         org.openide.awt.Mnemonics.setLocalizedText(btnMngPlatform, org.openide.util.NbBundle.getMessage(CompilePanel.class, "CompilePanel.btnMngPlatform.text")); // NOI18N
@@ -556,8 +556,14 @@ public class CompilePanel extends javax.swing.JPanel implements HelpCtx.Provider
     }// </editor-fold>//GEN-END:initComponents
 
     private void btnMngPlatformActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_btnMngPlatformActionPerformed
-        PlatformsCustomizer.showCustomizer(getSelPlatform().second());
-}//GEN-LAST:event_btnMngPlatformActionPerformed
+        Union2<JavaPlatform, String> currentSelectedPlatform = (Union2<JavaPlatform, String>) comJavaPlatform.getSelectedItem();
+        JavaPlatform toPreselect = currentSelectedPlatform != null && currentSelectedPlatform.hasFirst()
+                ? currentSelectedPlatform.first() : getSelPlatform().second();
+        PlatformsCustomizer.showCustomizer(toPreselect);
+        if (comJavaPlatform.getModel() instanceof PlatformsModel platformsModel) {
+            platformsModel.updateJdkDataModel(currentSelectedPlatform);
+        }
+    }//GEN-LAST:event_btnMngPlatformActionPerformed
 
 
     // Variables declaration - do not modify//GEN-BEGIN:variables
@@ -989,9 +995,49 @@ public class CompilePanel extends javax.swing.JPanel implements HelpCtx.Provider
 
         @Override
         public void propertyChange(PropertyChangeEvent evt) {
-            JavaPlatformManager jpm = JavaPlatformManager.getDefault();
-            getPlatforms(jpm);
+            updateJdkDataModel(sel);
+        }
+
+        /**
+         * Refreshes the list of installed platforms and re-resolves the selection to
+         * whichever entry in the new list represents the same platform as
+         * {@code targetPlatform} (or the current selection when null). Matching is
+         * done via the stable "platform.ant.name" id rather than display name, since
+         * display names are user-editable and not guaranteed to be unique.
+         */
+        public void updateJdkDataModel(Union2<JavaPlatform, String> targetPlatform) {
+            getPlatforms(JavaPlatformManager.getDefault());
+
+            Union2<JavaPlatform, String> target = targetPlatform != null ? targetPlatform : sel;
+            Union2<JavaPlatform, String> newSel = findByAntName(target);
+            if (newSel == null) {
+                JavaPlatform def = getDefaultPlatform();
+                if (def != null) {
+                    newSel = findByAntName(Union2.createFirst(def));
+                }
+            }
+            sel = newSel != null ? newSel : (data.isEmpty() ? null : data.get(0));
             fireContentsChanged(this, 0, data.size());
+        }
+
+        private Union2<JavaPlatform, String> findByAntName(Union2<JavaPlatform, String> target) {
+            if (target == null) {
+                return null;
+            }
+            String antName = target.hasFirst() ? target.first().getProperties().get("platform.ant.name") : target.second();
+            if (antName == null) {
+                return null;
+            }
+            for (Union2<JavaPlatform, String> item : data) {
+                if (item.hasFirst()) {
+                    if (antName.equals(item.first().getProperties().get("platform.ant.name"))) {
+                        return item;
+                    }
+                } else if (antName.equals(item.second())) {
+                    return item;
+                }
+            }
+            return null;
         }
 
         private void getPlatforms(JavaPlatformManager jpm) {
