@@ -164,7 +164,10 @@ public class FaceletsLibrarySupportTest extends TestBaseForTestProject {
         Attribute a2 = t2.getAttribute("myattr");
         assertNotNull(a2);
         assertEquals("myattr", a2.getName());
-
+        
+        // TagHandlers must NOT have UIComponent attributes
+        assertNull(t2.getAttribute("rendered"));
+        assertNull(t2.getAttribute("transient"));
     }
 
     public void testClassBaseLibraryFromLibraryProject() {
