@@ -23,6 +23,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Locale;
 
 import javax.lang.model.element.Element;
 import javax.lang.model.element.ExecutableElement;
@@ -89,7 +90,13 @@ public final class WebBeansELVariableResolver implements ELVariableResolver {
 
     @Override
     public List<VariableInfo> getBeansInScope(String scope, Snapshot snapshot, ResolverContext context) {
-        return Collections.emptyList();
+        List<WebBean> beans = getWebBeans(snapshot.getSource().getFileObject(), context);
+        // bean's scope is CDI FQDN (eg. "jakarta.enterprise.context.RequestScoped")
+        // the received scope filter, instead, is the simple name (eg. "request")
+        return beans.stream()
+                .filter(bean -> bean.getScope() != null && bean.getScope().toLowerCase(Locale.ROOT).contains(scope))
+                .map(bean -> VariableInfo.createResolvedVariable(bean.getName(), bean.getBeanClassName()))
+                .toList();
     }
 
     @Override
@@ -119,7 +126,7 @@ public final class WebBeansELVariableResolver implements ELVariableResolver {
                     //filter out null elements - probably a WebBeansModel bug,
                     //happens under some circumstances when renaming/deleting beans
                     if (e != null) {
-                        webBeans.add(new WebBean(e, metadata.getName(e)));
+                        webBeans.add(new WebBean(e, metadata.getName(e), metadata.getScope(e)));
                     }
                 }
                 return webBeans;
@@ -137,14 +144,20 @@ public final class WebBeansELVariableResolver implements ELVariableResolver {
 
         private final Element element;
         private final String name;
+        private final String scope;
 
-        private WebBean(Element element, String name) {
+        private WebBean(Element element, String name, String scope) {
             this.element = element;
             this.name = name;
+            this.scope = scope;
         }
 
         private Element getElement() {
             return element;
+        }
+
+        public String getScope() {
+            return scope;
         }
 
         public String getBeanClassName() {
