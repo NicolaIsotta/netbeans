@@ -165,11 +165,9 @@ public final class ELTypeUtilities {
      * @return the element or {@code null}.
      */
     public static Element resolveElement(CompilationContext info, final ELElement elem, final Node target, Map<AstIdentifier, Node> assignments, List<VariableInfo> variableInfos) {
-        return (Element) info.cache().getOrCache(CompilationCache.createKey(elem, target, assignments, variableInfos), () -> {
-            TypeResolverVisitor typeResolver = new TypeResolverVisitor(info, elem, target, assignments, variableInfos);
-            elem.getNode().accept(typeResolver);
-            return typeResolver.getResult();
-        });
+        TypeResolverVisitor typeResolver = new TypeResolverVisitor(info, elem, target, assignments, variableInfos);
+        elem.getNode().accept(typeResolver);
+        return typeResolver.getResult();
     }
 
     public static TypeMirror getReturnType(CompilationContext info, final ExecutableElement method) {
