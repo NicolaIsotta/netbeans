@@ -110,6 +110,11 @@ public class UpdateDependencyHint implements POMErrorFixProvider {
             }
         }
 
+        POMComponent parent = project.getPomParent();
+        if (parent != null) {
+            addHintsTo(List.of(parent), hints);
+        }
+
         return new ArrayList<>(hints.values());
     }
 
