@@ -64,7 +64,7 @@ import static org.netbeans.modules.maven.hints.pom.Bundle.*;
  */
 @NbBundle.Messages({
     "TIT_UpdateDependencyHint=Mark artifact upgrade opportunities.",
-    "DESC_UpdateDependencyHint=Marks the artifact if there is a new version available and provides a version upgrde fix."
+    "DESC_UpdateDependencyHint=Marks the artifact if there is a new version available and provides a version upgrade fix."
                             + "<p>Upgrades of major versions can be optionally omitted.</p>",
     "HINT_UpdateDependencyHint=New version available: ",
     "FIX_UpdateDependencyHint=upgrade to: "})
@@ -110,6 +110,11 @@ public class UpdateDependencyHint implements POMErrorFixProvider {
             }
         }
 
+        POMComponent parent = project.getPomParent();
+        if (parent != null) {
+            addHintsTo(List.of(parent), hints);
+        }
+
         return new ArrayList<>(hints.values());
     }
 
@@ -123,7 +128,10 @@ public class UpdateDependencyHint implements POMErrorFixProvider {
     private void addHintsToPlugins(List<Plugin> plugins, PluginManagement plugman, Map<POMComponent, ErrorDescription> hints) {
         addHintsTo(plugins, hints);
         if (plugman != null) {
-            addHintsTo(plugman.getPlugins(), hints);
+            addHintsToPlugins(plugman.getPlugins(), null, hints);
+        }
+        if (plugins != null) {
+            plugins.forEach(plugin -> addHintsToDependencies(plugin.getDependencies(), null, hints));
         }
     }
 
