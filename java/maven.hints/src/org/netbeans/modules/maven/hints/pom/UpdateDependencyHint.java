@@ -64,7 +64,7 @@ import static org.netbeans.modules.maven.hints.pom.Bundle.*;
  */
 @NbBundle.Messages({
     "TIT_UpdateDependencyHint=Mark artifact upgrade opportunities.",
-    "DESC_UpdateDependencyHint=Marks the artifact if there is a new version available and provides a version upgrde fix."
+    "DESC_UpdateDependencyHint=Marks the artifact if there is a new version available and provides a version upgrade fix."
                             + "<p>Upgrades of major versions can be optionally omitted.</p>",
     "HINT_UpdateDependencyHint=New version available: ",
     "FIX_UpdateDependencyHint=upgrade to: "})
@@ -130,6 +130,7 @@ public class UpdateDependencyHint implements POMErrorFixProvider {
         if (plugman != null) {
             addHintsTo(plugman.getPlugins(), hints);
         }
+        plugins.forEach(plugin -> addHintsToDependencies(plugin.getDependencies(), null, hints));
     }
 
     // components typically implement VersionablePOMComponent, exceptions would be annotation processor lists
