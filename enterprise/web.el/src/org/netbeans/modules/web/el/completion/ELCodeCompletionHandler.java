@@ -47,6 +47,7 @@ import javax.lang.model.element.Element;
 import javax.lang.model.element.ExecutableElement;
 import javax.lang.model.element.Modifier;
 import javax.lang.model.element.TypeElement;
+import javax.lang.model.element.VariableElement;
 import javax.lang.model.util.ElementFilter;
 import javax.swing.text.Document;
 import javax.swing.text.JTextComponent;
@@ -74,6 +75,7 @@ import org.netbeans.modules.web.el.ResourceBundles;
 import org.netbeans.modules.web.el.ResourceBundles.Location;
 import org.netbeans.modules.web.el.refactoring.RefactoringUtil;
 import org.netbeans.modules.web.el.spi.ELPlugin;
+import org.netbeans.modules.web.el.spi.ELVariableResolver.ImportedTypeInfo;
 import org.netbeans.modules.web.el.spi.ELVariableResolver.VariableInfo;
 import org.netbeans.modules.web.el.spi.Function;
 import org.netbeans.modules.web.el.spi.ResolverContext;
@@ -183,12 +185,17 @@ public final class ELCodeCompletionHandler implements CodeCompletionHandler2 {
                         proposeBeansFromScope(ccontext, context, prefixMatcher, element, node, proposals);
                     } else if (ELTypeUtilities.isResourceBundleVar(ccontext, node)) {
                         proposeBundleKeysInDotNotation(ccontext, context, prefixMatcher, element, node, proposals);
+                    } else if (!target.equals(nodeToResolve) && ELTypeUtilities.getImportedType(ccontext, element, node) != null) {
+                        // something like "Foo.^" where Foo was imported by e.g. <f:importConstants/>
+                        proposeImportedConstants(ccontext, context, prefixMatcher, element,
+                                ELTypeUtilities.getImportedType(ccontext, element, node), proposals, isBracketProperty(target, rootToNode));
                     } else if (resolved == null) {
                         if (target instanceof AstDotSuffix == false && node instanceof AstFunction == false) {
                             proposeFunctions(ccontext, context, prefixMatcher, element, proposals);
                             proposeManagedBeans(ccontext, context, prefixMatcher, element, proposals);
                             proposeBundles(ccontext, context, prefixMatcher, element, proposals);
                             proposeVariables(ccontext, context, prefixMatcher, element, proposals);
+                            proposeImportedTypes(ccontext, context, prefixMatcher, element, proposals);
                             proposeImpicitObjects(ccontext, context, prefixMatcher, proposals);
                             proposeKeywords(context, prefixMatcher, proposals);
                             proposeAssignements(context, prefixMatcher, assignments, proposals);
@@ -577,6 +584,49 @@ public final class ELCodeCompletionHandler implements CodeCompletionHandler2 {
                 item.setSmart(true);
                 proposals.add(item);
             }
+        }
+    }
+
+    private void proposeImportedTypes(CompilationContext info, CodeCompletionContext context,
+            PrefixMatcher prefix, ELElement elElement, List<CompletionProposal> proposals) {
+
+        for (ImportedTypeInfo importedType : ELVariableResolvers.getImportedTypes(info, context.getParserResult().getSnapshot())) {
+            if (!prefix.matches(importedType.getName()) || contains(proposals, importedType.getName())) {
+                continue;
+            }
+            Element element = ELTypeUtilities.getImportedTypeElement(info, importedType);
+            if (element == null) {
+                continue; //unresolvable class name
+            }
+            ELJavaCompletionItem item = new ELJavaCompletionItem(info, element, importedType.getName(), elElement);
+            item.setAnchorOffset(context.getCaretOffset() - prefix.length());
+            item.setSmart(true);
+            proposals.add(item);
+        }
+    }
+
+    private void proposeImportedConstants(CompilationContext info, CodeCompletionContext context,
+            PrefixMatcher prefix, ELElement elElement, ImportedTypeInfo importedType,
+            List<CompletionProposal> proposals, boolean isBracketProperty) {
+
+        for (VariableElement constant : ELTypeUtilities.getImportedConstants(info, importedType)) {
+            String name = constant.getSimpleName().toString();
+            if (!prefix.matches(name)) {
+                continue;
+            }
+            ELJavaCompletionItem item = new ELJavaCompletionItem(info, constant, name, elElement, isBracketProperty);
+            item.setAnchorOffset(context.getCaretOffset() - prefix.length());
+            item.setSmart(true);
+            proposals.add(item);
+        }
+        for (String key : importedType.getAllValuesKeys()) {
+            if (!prefix.matches(key)) {
+                continue;
+            }
+            ELVariableCompletionItem item = new ELVariableCompletionItem(key, importedType.getClazz() + "[]"); //NOI18N
+            item.setAnchorOffset(context.getCaretOffset() - prefix.length());
+            item.setSmart(true);
+            proposals.add(item);
         }
     }
 

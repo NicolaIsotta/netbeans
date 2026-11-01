@@ -28,6 +28,7 @@ import java.util.Collections;
 import java.util.Deque;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -53,6 +54,7 @@ import org.netbeans.api.java.platform.JavaPlatformManager;
 import org.netbeans.api.java.source.ClasspathInfo;
 import org.netbeans.api.java.source.TypeUtilities.TypeNameOptions;
 import org.netbeans.modules.web.el.completion.ELStreamCompletionItem;
+import org.netbeans.modules.web.el.spi.ELVariableResolver.ImportedTypeInfo;
 import org.netbeans.modules.web.el.spi.ELVariableResolver.VariableInfo;
 import org.netbeans.modules.web.el.spi.ImplicitObject;
 import org.netbeans.modules.web.el.refactoring.RefactoringUtil;
@@ -714,6 +716,109 @@ public final class ELTypeUtilities {
     }
 
     /**
+     * Gets the imported type (e.g. by {@code <f:importConstants/>}) the given node refers to.
+     * @param info compilation context
+     * @param elElement EL element containing the node
+     * @param node node to examine
+     * @return the imported type if the node is an identifier referring to it, {@code null} otherwise
+     * @since 1.88
+     */
+    public static ImportedTypeInfo getImportedType(CompilationContext info, ELElement elElement, Node node) {
+        if (!(node instanceof AstIdentifier)) {
+            return null;
+        }
+        return ELVariableResolvers.findImportedType(info, node.getImage(), elElement.getSnapshot());
+    }
+
+    /**
+     * @param info compilation context
+     * @param importedType imported type
+     * @return the element of the imported type or {@code null} if the type cannot be found on the classpath
+     * @since 1.88
+     */
+    public static TypeElement getImportedTypeElement(CompilationContext info, ImportedTypeInfo importedType) {
+        // nested classes may be specified in the binary form
+        return info.info().getElements().getTypeElement(importedType.getClazz().replace('$', '.')); //NOI18N
+    }
+
+    /**
+     * Gets the constants of the imported type which are accessible in EL. These are either all the
+     * enum constants, or all the public static final fields of the type including the inherited ones.
+     * @param info compilation context
+     * @param importedType imported type
+     * @return list of the constants; never {@code null}
+     * @since 1.88
+     */
+    public static List<VariableElement> getImportedConstants(CompilationContext info, ImportedTypeInfo importedType) {
+        TypeElement typeElement = getImportedTypeElement(info, importedType);
+        if (typeElement == null) {
+            return Collections.emptyList();
+        }
+        Map<String, VariableElement> result = new LinkedHashMap<>();
+        if (importedType.isEnumOnly()) {
+            for (VariableElement field : ElementFilter.fieldsIn(typeElement.getEnclosedElements())) {
+                if (field.getKind() == ElementKind.ENUM_CONSTANT) {
+                    result.put(field.getSimpleName().toString(), field);
+                }
+            }
+        } else {
+            Set<Element> visited = new HashSet<>();
+            Deque<TypeElement> deque = new ArrayDeque<>();
+            deque.add(typeElement);
+            while (!deque.isEmpty()) {
+                TypeElement type = deque.pop();
+                if (!visited.add(type)) {
+                    continue;
+                }
+                for (VariableElement field : ElementFilter.fieldsIn(type.getEnclosedElements())) {
+                    Set<Modifier> modifiers = field.getModifiers();
+                    // interface fields are implicitly public static final
+                    boolean constant = type.getKind() == ElementKind.INTERFACE
+                            || modifiers.containsAll(EnumSet.of(Modifier.PUBLIC, Modifier.STATIC, Modifier.FINAL));
+                    if (constant) {
+                        result.putIfAbsent(field.getSimpleName().toString(), field);
+                    }
+                }
+                List<TypeMirror> supertypes = new ArrayList<>(type.getInterfaces());
+                supertypes.add(0, type.getSuperclass());
+                for (TypeMirror supertype : supertypes) {
+                    if (supertype.getKind() == TypeKind.DECLARED) {
+                        deque.add((TypeElement) ((DeclaredType) supertype).asElement());
+                    }
+                }
+            }
+        }
+        return new ArrayList<>(result.values());
+    }
+
+    /**
+     * Resolves the member of the imported type accessed by the given suffix node, e.g.
+     * {@code BAR} in {@code #{Foo.BAR}}.
+     * @return the constant's {@link VariableElement}, {@link Iterable} for the keys holding
+     * all the enum values, or {@code null} if the member cannot be resolved
+     */
+    private static Element getImportedConstant(CompilationContext info, ImportedTypeInfo importedType, Node suffix) {
+        if (NodeUtil.isMethodCall(suffix)) {
+            // the constants are exposed as a Map, so its methods can be invoked
+            TypeElement mapElement = info.info().getElements().getTypeElement("java.util.Map"); //NOI18N
+            return mapElement == null ? null : getElementForProperty(info, suffix, mapElement);
+        }
+        String key = suffix.getImage();
+        if (key == null) {
+            return null;
+        }
+        if (importedType.getAllValuesKeys().contains(key)) {
+            return info.info().getElements().getTypeElement("java.lang.Iterable"); //NOI18N
+        }
+        for (VariableElement constant : getImportedConstants(info, importedType)) {
+            if (key.contentEquals(constant.getSimpleName())) {
+                return constant;
+            }
+        }
+        return null;
+    }
+
+    /**
      * Whether the given node represents static {@link Iterable} field where can be used operators.
      * @param ccontext compilation context
      * @param node node to examine
@@ -849,7 +954,13 @@ public final class ELTypeUtilities {
             // traverses AST resolving types for each property starting from
             // an identifier until the target is found
             if (evalNode instanceof AstIdentifier) {
-                enclosing = getIdentifierType(info, (AstIdentifier) evalNode, elem);
+                // constants imported by e.g. <f:importConstants/>
+                ImportedTypeInfo importedType = getImportedType(info, elem, evalNode);
+                if (importedType != null) {
+                    enclosing = getImportedTypeElement(info, importedType);
+                } else {
+                    enclosing = getIdentifierType(info, (AstIdentifier) evalNode, elem);
+                }
                 if (enclosing != null) {
                     if (node.equals(target)) {
                         result = enclosing;
@@ -859,7 +970,17 @@ public final class ELTypeUtilities {
                     for (int i = 0; i < parent.jjtGetNumChildren(); i++) {
                         Node child = parent.jjtGetChild(i);
                         if (child instanceof AstDotSuffix || NodeUtil.isMethodCall(child)) {
-                            Element propertyType = getElementForProperty(info, child, enclosing);
+                            Element propertyType;
+                            if (importedType != null) {
+                                // the first property of an imported type is one of its constants
+                                propertyType = getImportedConstant(info, importedType, child);
+                                importedType = null;
+                                if (propertyType == null) {
+                                    return;
+                                }
+                            } else {
+                                propertyType = getElementForProperty(info, child, enclosing);
+                            }
                             if (propertyType == null) {
                                 // special case handling for scope objects; their types don't help
                                 // in resolving the beans they contain. The code below handles cases
@@ -930,6 +1051,18 @@ public final class ELTypeUtilities {
                                     } else {
                                         enclosing = info.info().getTypes().asElement(returnType);
                                     }
+                                }
+                                if (enclosing == null) {
+                                    return;
+                                }
+                            } else if (propertyType.getKind() == ElementKind.FIELD
+                                    || propertyType.getKind() == ElementKind.ENUM_CONSTANT) {
+                                // constant of an imported type
+                                TypeMirror fieldType = propertyType.asType();
+                                if (fieldType.getKind() == TypeKind.ARRAY) {
+                                    enclosing = info.info().getElements().getTypeElement("java.lang.Iterable"); //NOI18N
+                                } else {
+                                    enclosing = info.info().getTypes().asElement(fieldType);
                                 }
                                 if (enclosing == null) {
                                     return;

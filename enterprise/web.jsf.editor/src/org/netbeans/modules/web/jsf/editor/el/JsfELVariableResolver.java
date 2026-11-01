@@ -58,6 +58,7 @@ import org.netbeans.modules.parsing.spi.ParseException;
 import org.netbeans.modules.parsing.spi.Parser.Result;
 import org.netbeans.modules.web.common.api.LexerUtils;
 import org.netbeans.modules.web.el.spi.ELVariableResolver;
+import org.netbeans.modules.web.el.spi.ELVariableResolver.ImportedTypeInfo;
 import org.netbeans.modules.web.el.spi.ELVariableResolver.VariableInfo;
 import org.netbeans.modules.web.el.spi.ResolverContext;
 import org.netbeans.modules.web.jsf.api.editor.JSFBeanCache;
@@ -147,6 +148,28 @@ public final class JsfELVariableResolver implements ELVariableResolver {
                 continue;
             }
             result.add(VariableInfo.createUnresolvedVariable(jsfVariable.getVariableName(), expression));
+        }
+        return result;
+    }
+
+    @Override
+    public List<ImportedTypeInfo> getImportedTypes(Snapshot snapshot, ResolverContext context) {
+        final List<ImportedTypeInfo> result = new ArrayList<>();
+        try {
+            ParserManager.parse(Collections.singleton(snapshot.getSource()), new UserTask() {
+
+                @Override
+                public void run(ResultIterator resultIterator) throws Exception {
+                    //one level - works only if xhtml is top level
+                    Result parseResult = JsfUtils.getEmbeddedParserResult(resultIterator, "text/html"); //NOI18N
+                    if (parseResult instanceof HtmlParserResult) {
+                        JsfVariablesModel model = JsfVariablesModel.getModel((HtmlParserResult) parseResult, resultIterator.getSnapshot());
+                        result.addAll(model.getImportedTypes());
+                    }
+                }
+            });
+        } catch (ParseException e) {
+            Exceptions.printStackTrace(e);
         }
         return result;
     }

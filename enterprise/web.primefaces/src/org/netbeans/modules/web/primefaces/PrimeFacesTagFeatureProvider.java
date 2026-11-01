@@ -36,6 +36,7 @@ import org.openide.util.lookup.ServiceProvider;
 
 /**
  * {@link TagFeatureProvider} for PrimeFaces.
+ * Provides iterable tags and the {@code p:importConstants} / {@code p:importEnum} tags.
  * 
  * @author petrpodzimek
  */
@@ -44,6 +45,11 @@ public class PrimeFacesTagFeatureProvider implements TagFeatureProvider {
 
     private static final String VALUE = "value";
     private static final String VAR = "var";
+    private static final String TYPE = "type"; //NOI18N
+    private static final String ALL_SUFFIX = "allSuffix"; //NOI18N
+    private static final String ALL_VALUES = "ALL_VALUES"; //NOI18N
+    private static final String IMPORT_CONSTANTS = "importConstants"; //NOI18N
+    private static final String IMPORT_ENUM = "importEnum"; //NOI18N
 
     private static final Map<LibraryInfo, Map<String, IterableTag>> TAGS_MAP;
 
@@ -71,8 +77,50 @@ public class PrimeFacesTagFeatureProvider implements TagFeatureProvider {
                 }));
             }
 
+        } else if (clazz.equals(TagFeature.ImportConstantsTagPattern.class)) {
+            final boolean importEnum = IMPORT_ENUM.equals(tag.getName());
+            if ((importEnum || IMPORT_CONSTANTS.equals(tag.getName())) && isPrimeFacesLibrary(library)) {
+                return Collections.singleton(clazz.cast(new TagFeature.ImportConstantsTagPattern() {
+                    @Override
+                    public Attribute getType() {
+                        return getAttribute(tag, TYPE);
+                    }
+
+                    @Override
+                    public Attribute getVariable() {
+                        return getAttribute(tag, VAR);
+                    }
+
+                    @Override
+                    public boolean isEnumOnly() {
+                        return importEnum;
+                    }
+
+                    @Override
+                    public String getAllValuesKey() {
+                        return importEnum ? ALL_VALUES : null;
+                    }
+
+                    @Override
+                    public Attribute getAllValuesKeyAttribute() {
+                        return importEnum ? getAttribute(tag, ALL_SUFFIX) : null;
+                    }
+                }));
+            }
         }
         return Collections.emptyList();
+    }
+
+    private static boolean isPrimeFacesLibrary(Library library) {
+        String libraryNamespace = library.getNamespace();
+        return libraryNamespace != null
+                && DefaultLibraryInfo.forNamespace(libraryNamespace) == DefaultLibraryInfo.PRIMEFACES;
+    }
+
+    private static Attribute getAttribute(Tag tag, String name) {
+        Attribute attribute = tag.getAttribute(name);
+        // the tag metadata may not describe the attribute, the name is what matters
+        return attribute != null ? attribute : new Attribute.DefaultAttribute(name, null, false);
     }
 
     private PrimeFacesTagFeatureProvider.IterableTag resolveIterableTag(Library library, Tag tag) {

@@ -21,7 +21,9 @@ package org.netbeans.modules.web.jsf.editor.el;
 import java.lang.ref.WeakReference;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.Iterator;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.SortedSet;
@@ -31,6 +33,7 @@ import java.util.logging.Logger;
 import org.netbeans.modules.html.editor.api.gsf.HtmlParserResult;
 import org.netbeans.modules.html.editor.lib.api.elements.*;
 import org.netbeans.modules.parsing.api.Snapshot;
+import org.netbeans.modules.web.el.spi.ELVariableResolver.ImportedTypeInfo;
 import org.netbeans.modules.web.jsf.editor.JsfSupportImpl;
 import org.netbeans.modules.web.jsfapi.api.JsfVersion;
 import org.netbeans.modules.web.jsfapi.api.Library;
@@ -72,6 +75,7 @@ public class JsfVariablesModel {
 
     private HtmlParserResult result;
     private SortedSet<JsfVariableContext> contextsList = new TreeSet<>();
+    private final List<ImportedTypeInfo> importedTypes = new ArrayList<>();
     private Snapshot topLevelSnapshot;
 
     private JsfVariablesModel(HtmlParserResult result, Snapshot topLevelSnapshot) {
@@ -187,8 +191,89 @@ public class JsfVariablesModel {
                     }
                     
                 }
+
+                collectImportedTypes(root, library);
             }
         }
+    }
+
+    /**
+     * Collects the types whose constants are imported by tags like
+     * {@code <f:importConstants type="..." var="..."/>}.
+     */
+    private void collectImportedTypes(Node root, final Library library) {
+        if (root == null || library == null) {
+            return;
+        }
+        List<Element> importTags = ElementUtils.getChildrenRecursivelly(root, new ElementFilter() {
+            @Override
+            public boolean accepts(Element node) {
+                return node.type() == ElementType.OPEN_TAG
+                        && !getImportConstantsFeatures(library, (OpenTag) node).isEmpty();
+            }
+        }, false);
+
+        for (Element node : importTags) {
+            OpenTag openTag = (OpenTag) node;
+            for (TagFeature.ImportConstantsTagPattern pattern : getImportConstantsFeatures(library, openTag)) {
+                String type = getLiteralAttributeValue(openTag, pattern.getType());
+                if (type == null) {
+                    continue;
+                }
+                String var = getLiteralAttributeValue(openTag, pattern.getVariable());
+                if (var == null) {
+                    // all the implementations default to the simple name of the type
+                    String binaryName = type.substring(type.lastIndexOf('.') + 1);
+                    var = binaryName.substring(binaryName.lastIndexOf('$') + 1);
+                }
+                Set<String> allValuesKeys = new LinkedHashSet<>();
+                if (pattern.getAllValuesKey() != null) {
+                    allValuesKeys.add(pattern.getAllValuesKey());
+                }
+                String customAllValuesKey = getLiteralAttributeValue(openTag, pattern.getAllValuesKeyAttribute());
+                if (customAllValuesKey != null) {
+                    allValuesKeys.add(customAllValuesKey);
+                }
+                importedTypes.add(new ImportedTypeInfo(var, type, pattern.isEnumOnly(), allValuesKeys));
+                break;
+            }
+        }
+    }
+
+    private static Collection<TagFeature.ImportConstantsTagPattern> getImportConstantsFeatures(Library library, OpenTag openTag) {
+        LibraryComponent component = library.getComponent(openTag.unqualifiedName().toString());
+        if (component == null) {
+            return Collections.emptyList();
+        }
+        return TagFeatureProvider.Query.getFeatures(component.getTag(), library, TagFeature.ImportConstantsTagPattern.class);
+    }
+
+    /**
+     * @return trimmed value of the attribute or {@code null} if the attribute is not present,
+     * is empty or contains an EL expression
+     */
+    private static String getLiteralAttributeValue(OpenTag openTag, org.netbeans.modules.web.jsfapi.api.Attribute attribute) {
+        if (attribute == null) {
+            return null;
+        }
+        Attribute tagAttribute = openTag.getAttribute(attribute.getName());
+        CharSequence value = tagAttribute == null ? null : tagAttribute.unquotedValue();
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.toString().trim();
+        // the EL expressions are substituted by @@@ in the html snapshot
+        if (trimmed.isEmpty() || trimmed.contains("@@@") || trimmed.contains("{")) { //NOI18N
+            return null;
+        }
+        return trimmed;
+    }
+
+    /**
+     * @return the types whose constants are imported into the page, e.g. by {@code <f:importConstants/>}
+     */
+    public List<ImportedTypeInfo> getImportedTypes() {
+        return importedTypes;
     }
 
     private String unquotedValue(String value) {

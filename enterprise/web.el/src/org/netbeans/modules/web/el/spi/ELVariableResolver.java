@@ -19,7 +19,10 @@
 
 package org.netbeans.modules.web.el.spi;
 
+import java.util.Collections;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 import org.netbeans.modules.parsing.api.Snapshot;
 import org.openide.filesystems.FileObject;
 import org.openide.util.Parameters;
@@ -84,6 +87,20 @@ public interface ELVariableResolver {
     List<VariableInfo> getRawObjectProperties(String name, Snapshot snapshot, ResolverContext context);
 
     /**
+     * Gets the types whose constants are imported into the EL scope of the given snapshot,
+     * e.g. by {@code <f:importConstants type="com.example.Foo"/>}. The constants are
+     * then accessible as {@code #{Foo.CONSTANT}}.
+     *
+     * @param snapshot
+     * @param context
+     * @return a list of imported type infos; never {@code null}.
+     * @since 1.88
+     */
+    default List<ImportedTypeInfo> getImportedTypes(Snapshot snapshot, ResolverContext context) {
+        return Collections.emptyList();
+    }
+
+    /**
      * Hold information about injectable field.
      */
     public static final class FieldInfo {
@@ -118,6 +135,72 @@ public interface ELVariableResolver {
 
         public String getType() {
             return type;
+        }
+    }
+
+    /**
+     * Holds information about a type whose constants are imported into the EL scope.
+     *
+     * @since 1.88
+     */
+    public static final class ImportedTypeInfo {
+
+        private final String name;
+        private final String clazz;
+        private final boolean enumOnly;
+        private final Set<String> allValuesKeys;
+
+        /**
+         * @param name the name under which the constants are accessible in EL, e.g. {@code Foo}
+         * @param clazz the FQN of the imported type
+         * @param enumOnly whether only the enum constants of the type are imported,
+         * otherwise all its public static final fields are imported
+         * @param allValuesKeys names of additional keys holding all the enum constants
+         * of the type (e.g. {@code ALL_VALUES}); may be {@code null}
+         */
+        public ImportedTypeInfo(String name, String clazz, boolean enumOnly, Set<String> allValuesKeys) {
+            Parameters.notNull("name", name); //NOI18N
+            Parameters.notNull("clazz", clazz); //NOI18N
+            this.name = name;
+            this.clazz = clazz;
+            this.enumOnly = enumOnly;
+            this.allValuesKeys = allValuesKeys == null
+                    ? Collections.<String>emptySet()
+                    : Collections.unmodifiableSet(new LinkedHashSet<>(allValuesKeys));
+        }
+
+        /**
+         * @return the name under which the constants are accessible in EL
+         */
+        public String getName() {
+            return name;
+        }
+
+        /**
+         * @return the FQN of the imported type
+         */
+        public String getClazz() {
+            return clazz;
+        }
+
+        /**
+         * @return {@code true} if only the enum constants of the type are imported
+         */
+        public boolean isEnumOnly() {
+            return enumOnly;
+        }
+
+        /**
+         * @return names of additional keys holding all the enum constants of the type; never {@code null}
+         */
+        public Set<String> getAllValuesKeys() {
+            return allValuesKeys;
+        }
+
+        @Override
+        public String toString() {
+            return "ImportedTypeInfo[name=" + name + ", clazz=" + clazz + ", enumOnly=" + enumOnly //NOI18N
+                    + ", allValuesKeys=" + allValuesKeys + "]"; //NOI18N
         }
     }
 

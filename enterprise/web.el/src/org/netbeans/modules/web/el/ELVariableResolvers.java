@@ -175,6 +175,50 @@ public final class ELVariableResolvers {
 
     }
 
+    /**
+     * Gets the types whose constants are imported into the EL scope of the given snapshot.
+     * @return list of imported types; never {@code null}.
+     * @since 1.88
+     */
+    public static List<ELVariableResolver.ImportedTypeInfo> getImportedTypes(
+            final CompilationContext compilationContext,
+            final Snapshot snapshot) {
+
+        return (List<ELVariableResolver.ImportedTypeInfo>) compilationContext.cache().getOrCache(
+                CompilationCache.createKey("importedTypes", snapshot), //NOI18N
+                new CompilationCache.ValueProvider<List<ELVariableResolver.ImportedTypeInfo>>() {
+
+                    @Override
+                    public List<ELVariableResolver.ImportedTypeInfo> get() {
+                        List<ELVariableResolver.ImportedTypeInfo> result = new ArrayList<>();
+                        for (ELVariableResolver resolver : getResolvers()) {
+                            result.addAll(resolver.getImportedTypes(snapshot, compilationContext.context()));
+                        }
+                        return result;
+                    }
+                });
+    }
+
+    /**
+     * Finds the imported type available under the given {@code name} in the given snapshot.
+     * @return the imported type or {@code null}.
+     * @since 1.88
+     */
+    public static ELVariableResolver.ImportedTypeInfo findImportedType(
+            final CompilationContext compilationContext,
+            final String name,
+            final Snapshot snapshot) {
+        if (name == null) {
+            return null;
+        }
+        for (ELVariableResolver.ImportedTypeInfo importedType : getImportedTypes(compilationContext, snapshot)) {
+            if (name.equals(importedType.getName())) {
+                return importedType;
+            }
+        }
+        return null;
+    }
+
     private static Collection<? extends ELVariableResolver> getResolvers() {
         return Lookup.getDefault().lookupAll(ELVariableResolver.class);
     }

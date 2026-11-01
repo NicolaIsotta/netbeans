@@ -69,6 +69,7 @@ final class ELJavaCompletionItem extends DefaultCompletionProposal {
     private final TypeMirror javaElementReturnType;
     private final List<String> javaElementParametersList;
     private final boolean isMethod;
+    private final boolean isConstant;
     private final boolean isMethodWithParams;
     private final boolean isBracketCall;
 
@@ -92,6 +93,8 @@ final class ELJavaCompletionItem extends DefaultCompletionProposal {
         this.isBracketCall = isBracketProperty;
         
         isMethod =  javaElement.getKind() == javax.lang.model.element.ElementKind.METHOD;
+        isConstant = javaElement.getKind() == javax.lang.model.element.ElementKind.FIELD
+                || javaElement.getKind() == javax.lang.model.element.ElementKind.ENUM_CONSTANT;
         
         javaElementSimpleName = javaElement.getSimpleName().toString();
             
@@ -128,6 +131,8 @@ final class ELJavaCompletionItem extends DefaultCompletionProposal {
     public ElementKind getKind() {
         if(isPropertyMethod()) {
             return ElementKind.PROPERTY;
+        } else if (isConstant) {
+            return ElementKind.CONSTANT;
         } else {
             return isMethod() ? ElementKind.METHOD : ElementKind.CLASS;
         }
@@ -261,7 +266,7 @@ final class ELJavaCompletionItem extends DefaultCompletionProposal {
         }
 
         private String getIn(Element javaElement) {
-            if (isMethod()) {
+            if (isMethod() || isConstant) {
                 return javaElement.getEnclosingElement().getSimpleName().toString();
             }
             return javaElement.getSimpleName().toString();
